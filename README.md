@@ -25,6 +25,12 @@ SQLite backend means you can actually query your system: "What installed this de
 
 The goal isn't to replace distros - it's to decouple package management from distro politics and give users the reliability and flexibility they deserve.
 
+## Technical Foundation
+
+- **Rust 1.91.1** (stable) with **Edition 2024**
+- **SQLite** via **rusqlite** - synchronous, battle-tested, and perfect for sequential package operations
+- Built for reliability over unnecessary complexity
+
 ## Status
 
 Early development. Watch this space.
