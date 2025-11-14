@@ -165,6 +165,19 @@ fn main() -> Result<()> {
             // Open database connection
             let mut conn = conary::db::open(&db_path)?;
 
+            // Pre-transaction validation: check if already installed
+            let existing = conary::db::models::Trove::find_by_name(&conn, rpm.name())?;
+            for trove in &existing {
+                if trove.version == rpm.version() && trove.architecture == rpm.architecture().map(|s| s.to_string()) {
+                    return Err(anyhow::anyhow!(
+                        "Package {} version {} ({}) is already installed",
+                        rpm.name(),
+                        rpm.version(),
+                        rpm.architecture().unwrap_or("no-arch")
+                    ));
+                }
+            }
+
             // Perform installation within a changeset transaction
             conary::db::transaction(&mut conn, |tx| {
                 // Create changeset for this installation

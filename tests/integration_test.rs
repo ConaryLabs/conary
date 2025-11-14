@@ -357,3 +357,206 @@ fn test_rpm_install_workflow() {
     println!("  Files: {}", rpm.files().len());
     println!("  Dependencies: {}", rpm.dependencies().len());
 }
+
+#[test]
+fn test_install_and_remove_workflow() {
+    use conary::db;
+    use conary::db::models::{Changeset, ChangesetStatus, Trove, TroveType};
+
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path().to_str().unwrap().to_string();
+    drop(temp_file);
+
+    db::init(&db_path).unwrap();
+    let mut conn = db::open(&db_path).unwrap();
+
+    // Install a package
+    db::transaction(&mut conn, |tx| {
+        let mut changeset = Changeset::new("Install test-package-1.0.0".to_string());
+        let changeset_id = changeset.insert(tx)?;
+
+        let mut trove = Trove::new(
+            "test-package".to_string(),
+            "1.0.0".to_string(),
+            TroveType::Package,
+        );
+        trove.installed_by_changeset_id = Some(changeset_id);
+        let trove_id = trove.insert(tx)?;
+
+        changeset.update_status(tx, ChangesetStatus::Applied)?;
+        Ok(trove_id)
+    })
+    .unwrap();
+
+    // Verify it's installed
+    let troves = Trove::find_by_name(&conn, "test-package").unwrap();
+    assert_eq!(troves.len(), 1);
+
+    // Remove the package
+    let trove_id = troves[0].id.unwrap();
+    db::transaction(&mut conn, |tx| {
+        let mut changeset = Changeset::new("Remove test-package-1.0.0".to_string());
+        changeset.insert(tx)?;
+
+        Trove::delete(tx, trove_id)?;
+        changeset.update_status(tx, ChangesetStatus::Applied)?;
+        Ok(())
+    })
+    .unwrap();
+
+    // Verify it's removed
+    let troves = Trove::find_by_name(&conn, "test-package").unwrap();
+    assert_eq!(troves.len(), 0);
+}
+
+#[test]
+fn test_install_and_rollback() {
+    use conary::db;
+    use conary::db::models::{Changeset, ChangesetStatus, Trove, TroveType};
+
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path().to_str().unwrap().to_string();
+    drop(temp_file);
+
+    db::init(&db_path).unwrap();
+    let mut conn = db::open(&db_path).unwrap();
+
+    // Install a package
+    let changeset_id = db::transaction(&mut conn, |tx| {
+        let mut changeset = Changeset::new("Install nginx-1.21.0".to_string());
+        let changeset_id = changeset.insert(tx)?;
+
+        let mut trove = Trove::new("nginx".to_string(), "1.21.0".to_string(), TroveType::Package);
+        trove.installed_by_changeset_id = Some(changeset_id);
+        trove.insert(tx)?;
+
+        changeset.update_status(tx, ChangesetStatus::Applied)?;
+        Ok(changeset_id)
+    })
+    .unwrap();
+
+    // Verify it's installed
+    let troves = Trove::find_by_name(&conn, "nginx").unwrap();
+    assert_eq!(troves.len(), 1);
+
+    // Rollback the installation
+    db::transaction(&mut conn, |tx| {
+        let mut rollback_changeset =
+            Changeset::new(format!("Rollback of changeset {}", changeset_id));
+        let rollback_id = rollback_changeset.insert(tx)?;
+
+        // Delete the trove
+        Trove::delete(tx, troves[0].id.unwrap())?;
+
+        rollback_changeset.update_status(tx, ChangesetStatus::Applied)?;
+
+        // Mark original as rolled back
+        tx.execute(
+            "UPDATE changesets SET status = 'rolled_back', reversed_by_changeset_id = ?1 WHERE id = ?2",
+            [rollback_id, changeset_id],
+        )?;
+
+        Ok(())
+    })
+    .unwrap();
+
+    // Verify it's removed
+    let troves = Trove::find_by_name(&conn, "nginx").unwrap();
+    assert_eq!(troves.len(), 0);
+
+    // Verify changeset is marked as rolled back
+    let changeset = Changeset::find_by_id(&conn, changeset_id).unwrap().unwrap();
+    assert_eq!(changeset.status, ChangesetStatus::RolledBack);
+}
+
+#[test]
+fn test_query_packages() {
+    use conary::db;
+    use conary::db::models::{Changeset, ChangesetStatus, Trove, TroveType};
+
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path().to_str().unwrap().to_string();
+    drop(temp_file);
+
+    db::init(&db_path).unwrap();
+    let mut conn = db::open(&db_path).unwrap();
+
+    // Install multiple packages
+    for (name, version) in [("nginx", "1.21.0"), ("redis", "6.2.0"), ("postgres", "14.0")] {
+        db::transaction(&mut conn, |tx| {
+            let mut changeset = Changeset::new(format!("Install {}-{}", name, version));
+            let changeset_id = changeset.insert(tx)?;
+
+            let mut trove = Trove::new(name.to_string(), version.to_string(), TroveType::Package);
+            trove.installed_by_changeset_id = Some(changeset_id);
+            trove.insert(tx)?;
+
+            changeset.update_status(tx, ChangesetStatus::Applied)?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    // Query all packages
+    let all_troves: Vec<Trove> = {
+        let mut stmt = conn
+            .prepare("SELECT id, name, version, type, architecture, description, installed_at, installed_by_changeset_id FROM troves ORDER BY name")
+            .unwrap();
+        stmt.query_map([], |row| {
+            Ok(Trove {
+                id: Some(row.get(0)?),
+                name: row.get(1)?,
+                version: row.get(2)?,
+                trove_type: row.get::<_, String>(3)?.parse().unwrap(),
+                architecture: row.get(4)?,
+                description: row.get(5)?,
+                installed_at: row.get(6)?,
+                installed_by_changeset_id: row.get(7)?,
+            })
+        })
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap()
+    };
+    assert_eq!(all_troves.len(), 3);
+
+    // Query specific package
+    let nginx_troves = Trove::find_by_name(&conn, "nginx").unwrap();
+    assert_eq!(nginx_troves.len(), 1);
+    assert_eq!(nginx_troves[0].version, "1.21.0");
+}
+
+#[test]
+fn test_history_shows_operations() {
+    use conary::db;
+    use conary::db::models::{Changeset, ChangesetStatus};
+
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path().to_str().unwrap().to_string();
+    drop(temp_file);
+
+    db::init(&db_path).unwrap();
+    let mut conn = db::open(&db_path).unwrap();
+
+    // Create some changesets
+    for desc in ["Install nginx", "Install redis", "Remove nginx"] {
+        db::transaction(&mut conn, |tx| {
+            let mut changeset = Changeset::new(desc.to_string());
+            changeset.insert(tx)?;
+            changeset.update_status(tx, ChangesetStatus::Applied)?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    // Verify history
+    let changesets = Changeset::list_all(&conn).unwrap();
+    assert_eq!(changesets.len(), 3);
+    assert_eq!(changesets[0].description, "Remove nginx"); // Most recent first
+    assert_eq!(changesets[1].description, "Install redis");
+    assert_eq!(changesets[2].description, "Install nginx");
+
+    for changeset in &changesets {
+        assert_eq!(changeset.status, ChangesetStatus::Applied);
+    }
+}

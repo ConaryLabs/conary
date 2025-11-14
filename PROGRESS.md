@@ -1,6 +1,6 @@
 # PROGRESS.md
 
-## Project Status: Phase 5 In Progress - Changeset Transaction Model
+## Project Status: Phase 5 Complete - Changeset Transaction Model
 
 ### Current State
 - [COMPLETE] **Phase 0**: Vision and architecture documented
@@ -8,7 +8,8 @@
 - [COMPLETE] **Phase 2**: Database Schema & Core Layer complete
 - [COMPLETE] **Phase 3**: Core Abstractions & Data Models complete
 - [COMPLETE] **Phase 4**: Package Format Support (RPM parser)
-- [IN PROGRESS] **Phase 5**: Changeset Transaction Model (rollback & validation)
+- [COMPLETE] **Phase 5**: Changeset Transaction Model with rollback & validation
+- [PENDING] **Phase 6**: File-Level Operations (next)
 
 ### Phase 1 Deliverables [COMPLETE]
 - Cargo.toml with core dependencies (rusqlite, thiserror, anyhow, clap, sha2, tracing)
@@ -190,7 +191,9 @@
 - All code clippy-clean with zero warnings
 - Note: File deployment to filesystem not yet implemented (metadata-only for now)
 
-**Session 7** (2025-11-14) - **Phase 5 Progress: Core Changeset Operations**
+**Session 7** (2025-11-14) - **Phase 5 Complete: Changeset Transaction Model**
+
+Part 1 - Core Changeset Operations:
 - Implemented Remove command (conary remove <package>):
   - Finds installed package by name
   - Creates removal changeset
@@ -215,7 +218,27 @@
   - Marks original changeset as RolledBack
   - Links rollback changeset via reversed_by_changeset_id
   - Note: Cannot rollback Remove operations yet (requires data preservation)
-- Testing:
-  - All 35 tests passing (29 unit + 6 integration, 1 ignored)
+
+Part 2 - Validation and Testing:
+- Added pre-transaction validation for install:
+  - Checks if package (name+version+arch) already installed
+  - Returns clear error preventing duplicate installations
+- Existing remove validation verified:
+  - Checks package exists before removal
+  - Handles multiple versions appropriately
+- Comprehensive integration test suite:
+  - test_install_and_remove_workflow - Full install/remove cycle
+  - test_install_and_rollback - Install and rollback verification
+  - test_query_packages - Multi-package query testing
+  - test_history_shows_operations - Changeset history tracking
+- Final testing:
+  - 39 tests passing (29 unit + 10 integration, 1 ignored)
   - All code clippy-clean with zero warnings
-- Next: Pre-transaction validation, more comprehensive tests, validation for dependencies
+  - Schema migration v2 tested and working
+
+Phase 5 Success Criteria Met:
+- Atomic operations with rollback capability ✓
+- Pre-transaction validation ✓
+- File conflict detection (database level) ✓
+- Transaction logging and history ✓
+- Comprehensive tests ✓
