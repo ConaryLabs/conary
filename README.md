@@ -46,4 +46,33 @@ The goal isn't to replace distros - it's to decouple package management from dis
 
 ## Status
 
-Early development. Watch this space.
+**Foundation Complete** - Six phases implemented and tested. The core architecture is solid and working.
+
+### What's Working Now
+
+**Commands Available:**
+- `conary init` - Initialize database and storage
+- `conary install <package>` - Install RPM packages with full file deployment
+- `conary remove <package>` - Remove installed packages
+- `conary query [pattern]` - List installed packages
+- `conary verify [package]` - Verify file integrity with SHA-256
+- `conary history` - Show all changeset operations
+- `conary rollback <id>` - Rollback any changeset, including filesystem changes
+
+**Core Features Implemented:**
+- **Content-Addressable Storage**: Git-style file storage with automatic deduplication
+- **Atomic Operations**: All operations wrapped in transactions - they work completely or not at all
+- **Full Rollback**: Database changes AND filesystem changes reversed atomically
+- **Conflict Detection**: Smart detection of file conflicts, errors on untracked files
+- **File Integrity**: SHA-256 verification of all installed files
+- **Schema Migrations**: Database evolves cleanly (currently v3)
+- **Changeset Model**: Every operation tracked as a changeset for complete auditability
+
+**Testing:**
+- 47 tests passing (30 lib + 7 bin + 10 integration)
+- Comprehensive test coverage for CAS, transactions, and core operations
+- Integration tests for full install/remove/rollback workflows
+
+### What's Next
+
+Phase 7 and beyond: dependency resolution, additional package formats (DEB, Arch), delta updates, repository management. See ROADMAP.md for details.
