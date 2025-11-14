@@ -2,6 +2,8 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use conary::packages::rpm::RpmPackage;
+use conary::packages::PackageFormat;
 use tracing::info;
 
 #[derive(Parser)]
@@ -16,6 +18,14 @@ struct Cli {
 enum Commands {
     /// Initialize the Conary database
     Init {
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+    },
+    /// Import an RPM package into the database
+    Import {
+        /// Path to the RPM package file
+        package_path: String,
         /// Database path (default: /var/lib/conary/conary.db)
         #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
         db_path: String,
@@ -38,6 +48,47 @@ fn main() -> Result<()> {
             info!("Initializing Conary database at: {}", db_path);
             conary::db::init(&db_path)?;
             println!("Database initialized successfully at: {}", db_path);
+            Ok(())
+        }
+        Some(Commands::Import {
+            package_path,
+            db_path,
+        }) => {
+            info!("Importing RPM package: {}", package_path);
+
+            // Parse the RPM package
+            let rpm = RpmPackage::parse(&package_path)?;
+
+            info!(
+                "Parsed package: {} version {} ({} files, {} dependencies)",
+                rpm.name(),
+                rpm.version(),
+                rpm.files().len(),
+                rpm.dependencies().len()
+            );
+
+            // Convert to Trove and insert into database
+            let conn = conary::db::open(&db_path)?;
+            let mut trove = rpm.to_trove();
+            trove.insert(&conn)?;
+
+            println!(
+                "Imported package: {} version {}",
+                rpm.name(),
+                rpm.version()
+            );
+            println!("  Architecture: {}", rpm.architecture().unwrap_or("none"));
+            println!("  Files: {}", rpm.files().len());
+            println!("  Dependencies: {}", rpm.dependencies().len());
+
+            // Show provenance info if available
+            if let Some(source_rpm) = rpm.source_rpm() {
+                println!("  Source RPM: {}", source_rpm);
+            }
+            if let Some(vendor) = rpm.vendor() {
+                println!("  Vendor: {}", vendor);
+            }
+
             Ok(())
         }
         None => {

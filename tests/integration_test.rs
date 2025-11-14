@@ -274,3 +274,56 @@ fn test_trove_with_flavors_and_provenance() {
     assert_eq!(ssl_packages.len(), 1);
     assert_eq!(ssl_packages[0].trove_id, trove_id);
 }
+
+#[test]
+#[ignore] // Ignored by default since it requires a real RPM file
+fn test_rpm_import_workflow() {
+    use conary::db;
+    use conary::packages::rpm::RpmPackage;
+    use conary::packages::PackageFormat;
+
+    // This test requires a real RPM file to be present
+    // To run: place an RPM file at /tmp/test.rpm and run:
+    // cargo test test_rpm_import_workflow -- --ignored
+
+    let rpm_path = "/tmp/test.rpm";
+    if !std::path::Path::new(rpm_path).exists() {
+        eprintln!("Skipping RPM import test: no RPM file at {}", rpm_path);
+        return;
+    }
+
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path().to_str().unwrap().to_string();
+    drop(temp_file);
+
+    // Initialize database
+    db::init(&db_path).unwrap();
+    let conn = db::open(&db_path).unwrap();
+
+    // Parse the RPM
+    let rpm = RpmPackage::parse(rpm_path).expect("Failed to parse RPM");
+
+    // Verify basic metadata was extracted
+    assert!(!rpm.name().is_empty(), "Package name should not be empty");
+    assert!(
+        !rpm.version().is_empty(),
+        "Package version should not be empty"
+    );
+
+    // Convert to trove and insert
+    let mut trove = rpm.to_trove();
+    let trove_id = trove.insert(&conn).expect("Failed to insert trove");
+
+    // Verify it was stored
+    let retrieved = conary::db::models::Trove::find_by_id(&conn, trove_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(retrieved.name, rpm.name());
+    assert_eq!(retrieved.version, rpm.version());
+
+    println!("Successfully imported RPM package:");
+    println!("  Name: {}", rpm.name());
+    println!("  Version: {}", rpm.version());
+    println!("  Files: {}", rpm.files().len());
+    println!("  Dependencies: {}", rpm.dependencies().len());
+}
