@@ -1,12 +1,13 @@
 // src/main.rs
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use conary::packages::rpm::RpmPackage;
 use conary::packages::traits::DependencyType;
 use conary::packages::PackageFormat;
 use std::fs::File;
-use std::io::Read;
+use std::io::{self, Read};
 use tracing::info;
 
 /// Package format types
@@ -111,6 +112,12 @@ enum Commands {
         /// Database path (default: /var/lib/conary/conary.db)
         #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
         db_path: String,
+    },
+    /// Generate shell completion scripts
+    Completions {
+        /// Shell type (bash, zsh, fish, powershell)
+        #[arg(value_enum)]
+        shell: Shell,
     },
 }
 
@@ -820,6 +827,14 @@ fn main() -> Result<()> {
                 }
                 println!("\nTotal: {} packages would be affected", breaking.len());
             }
+
+            Ok(())
+        }
+        Some(Commands::Completions { shell }) => {
+            info!("Generating shell completions for {:?}", shell);
+
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "conary", &mut io::stdout());
 
             Ok(())
         }

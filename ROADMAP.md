@@ -138,21 +138,25 @@ See PROGRESS.md for detailed session-by-session implementation notes.
 
 ---
 
-## Phase 8: CLI Interface (Basic Commands) - PARTIALLY COMPLETE
+## Phase 8: CLI Interface (Basic Commands) - ✓ COMPLETE
 **Goal**: Build user-facing command-line interface
 
 **Deliverables**:
 - ✓ `conary install <trove>` - install packages (DONE in Phase 4-6)
-- ✓ `conary remove <trove>` - remove packages (DONE in Phase 5)
+- ✓ `conary remove <trove>` - remove packages with dependency checking (DONE in Phase 5+7)
 - ✓ `conary rollback <changeset-id>` - rollback to previous state (DONE in Phase 5-6)
 - ✓ `conary query <pattern>` - search installed packages (DONE in Phase 5)
 - ✓ `conary verify [package]` - check file integrity (DONE in Phase 6)
 - ✓ `conary history` - show changeset history (DONE in Phase 5)
-- ⏳ `conary update` - update all packages (NOT YET)
-- ⏳ Shell completion scripts (NOT YET)
-- ⏳ Man pages (NOT YET)
+- ✓ `conary depends <package>` - show dependencies (DONE in Phase 7)
+- ✓ `conary rdepends <package>` - show reverse dependencies (DONE in Phase 7)
+- ✓ `conary whatbreaks <package>` - show breaking packages (DONE in Phase 7)
+- ✓ `conary completions <shell>` - generate shell completions (DONE in Phase 8)
+- ✓ Shell completion scripts for bash, zsh, fish, powershell (DONE in Phase 8)
+- ✓ Man pages via clap_mangen (DONE in Phase 8)
+- ⏰ `conary update` - update packages (DEFERRED - requires repository management from Phase 9+)
 
-**Success Criteria**: Can perform basic package operations from command line ✓ (MOSTLY MET)
+**Success Criteria**: Can perform basic package operations from command line ✓ COMPLETE
 
 ---
 

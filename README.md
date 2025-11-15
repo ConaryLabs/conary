@@ -53,11 +53,15 @@ The goal isn't to replace distros - it's to decouple package management from dis
 **Commands Available:**
 - `conary init` - Initialize database and storage
 - `conary install <package>` - Install RPM packages with full file deployment
-- `conary remove <package>` - Remove installed packages
+- `conary remove <package>` - Remove installed packages (checks dependencies)
 - `conary query [pattern]` - List installed packages
 - `conary verify [package]` - Verify file integrity with SHA-256
 - `conary history` - Show all changeset operations
 - `conary rollback <id>` - Rollback any changeset, including filesystem changes
+- `conary depends <package>` - Show package dependencies
+- `conary rdepends <package>` - Show reverse dependencies (what depends on this)
+- `conary whatbreaks <package>` - Show what would break if package removed
+- `conary completions <shell>` - Generate shell completion scripts
 
 **Core Features Implemented:**
 - **Content-Addressable Storage**: Git-style file storage with automatic deduplication
@@ -67,12 +71,48 @@ The goal isn't to replace distros - it's to decouple package management from dis
 - **File Integrity**: SHA-256 verification of all installed files
 - **Schema Migrations**: Database evolves cleanly (currently v3)
 - **Changeset Model**: Every operation tracked as a changeset for complete auditability
+- **Dependency Resolution**: Graph-based solver with topological sort and cycle detection
+- **Version Constraints**: Full RPM version support with semver comparison
+
+**Shell Completions:**
+
+Generate completions for your shell:
+
+```bash
+# Bash
+conary completions bash > /etc/bash_completion.d/conary
+
+# Zsh
+conary completions zsh > /usr/share/zsh/site-functions/_conary
+
+# Fish
+conary completions fish > ~/.config/fish/completions/conary.fish
+
+# PowerShell
+conary completions powershell > conary.ps1
+```
+
+**Man Pages:**
+
+Man pages are automatically generated during build and located in `man/conary.1`. View with:
+
+```bash
+man ./man/conary.1
+```
+
+Or install system-wide:
+
+```bash
+sudo cp man/conary.1 /usr/share/man/man1/
+sudo mandb
+man conary
+```
 
 **Testing:**
-- 47 tests passing (30 lib + 7 bin + 10 integration)
-- Comprehensive test coverage for CAS, transactions, and core operations
+- 61 tests passing (44 lib + 7 bin + 10 integration)
+- Comprehensive test coverage for CAS, transactions, dependency resolution, and core operations
 - Integration tests for full install/remove/rollback workflows
 
 ### What's Next
 
-Phase 7 and beyond: dependency resolution, additional package formats (DEB, Arch), delta updates, repository management. See ROADMAP.md for details.
+Phase 9 and beyond: repository management, additional package formats (DEB, Arch), delta updates, package signing. See ROADMAP.md for details.

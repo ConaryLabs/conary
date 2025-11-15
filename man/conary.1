@@ -1,0 +1,57 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH conary 1  "conary 0.1.0" 
+.SH NAME
+conary \- Modern package manager with atomic operations and rollback
+.SH SYNOPSIS
+\fBconary\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIsubcommands\fR]
+.SH DESCRIPTION
+Modern package manager with atomic operations and rollback
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+conary\-init(1)
+Initialize the Conary database
+.TP
+conary\-install(1)
+Install a package (auto\-detects RPM, DEB, Arch formats)
+.TP
+conary\-remove(1)
+Remove an installed package
+.TP
+conary\-query(1)
+Query installed packages
+.TP
+conary\-history(1)
+Show changeset history
+.TP
+conary\-rollback(1)
+Rollback a changeset
+.TP
+conary\-verify(1)
+Verify installed files match their stored hashes
+.TP
+conary\-depends(1)
+Show dependencies of a package
+.TP
+conary\-rdepends(1)
+Show reverse dependencies (what depends on this package)
+.TP
+conary\-whatbreaks(1)
+Show what packages would break if this package is removed
+.TP
+conary\-completions(1)
+Generate shell completion scripts
+.TP
+conary\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v0.1.0
+.SH AUTHORS
+Conary Contributors
