@@ -73,6 +73,7 @@ impl RpmPackage {
                     name: req.name.to_string(),
                     version,
                     dep_type: DependencyType::Runtime,
+                    description: None,
                 });
             }
         }
@@ -167,51 +168,7 @@ impl PackageFormat for RpmPackage {
         &self.dependencies
     }
 
-    fn to_trove(&self) -> Trove {
-        let mut trove = Trove::new(
-            self.name().to_string(),
-            self.version().to_string(),
-            TroveType::Package,
-        );
-
-        trove.architecture = self.architecture().map(|s| s.to_string());
-        trove.description = self.description().map(|s| s.to_string());
-
-        trove
-    }
-}
-
-impl RpmPackage {
-    /// Get source RPM name (for provenance tracking)
-    pub fn source_rpm(&self) -> Option<&str> {
-        self.source_rpm.as_deref()
-    }
-
-    /// Get build host (for provenance tracking)
-    pub fn build_host(&self) -> Option<&str> {
-        self.build_host.as_deref()
-    }
-
-    /// Get vendor information
-    pub fn vendor(&self) -> Option<&str> {
-        self.vendor.as_deref()
-    }
-
-    /// Get license information
-    pub fn license(&self) -> Option<&str> {
-        self.license.as_deref()
-    }
-
-    /// Get upstream URL
-    pub fn url(&self) -> Option<&str> {
-        self.url.as_deref()
-    }
-
-    /// Extract all files with their contents from the RPM package
-    ///
-    /// This extracts files from the RPM payload (CPIO archive) to a temporary directory,
-    /// then reads them into memory. Uses rpm2cpio and cpio system commands.
-    pub fn extract_file_contents(&self) -> Result<Vec<ExtractedFile>> {
+    fn extract_file_contents(&self) -> Result<Vec<ExtractedFile>> {
         use std::process::Command;
         use tempfile::TempDir;
 
@@ -278,6 +235,46 @@ impl RpmPackage {
 
         debug!("Extracted {} files from RPM", extracted_files.len());
         Ok(extracted_files)
+    }
+
+    fn to_trove(&self) -> Trove {
+        let mut trove = Trove::new(
+            self.name().to_string(),
+            self.version().to_string(),
+            TroveType::Package,
+        );
+
+        trove.architecture = self.architecture().map(|s| s.to_string());
+        trove.description = self.description().map(|s| s.to_string());
+
+        trove
+    }
+}
+
+impl RpmPackage {
+    /// Get source RPM name (for provenance tracking)
+    pub fn source_rpm(&self) -> Option<&str> {
+        self.source_rpm.as_deref()
+    }
+
+    /// Get build host (for provenance tracking)
+    pub fn build_host(&self) -> Option<&str> {
+        self.build_host.as_deref()
+    }
+
+    /// Get vendor information
+    pub fn vendor(&self) -> Option<&str> {
+        self.vendor.as_deref()
+    }
+
+    /// Get license information
+    pub fn license(&self) -> Option<&str> {
+        self.license.as_deref()
+    }
+
+    /// Get upstream URL
+    pub fn url(&self) -> Option<&str> {
+        self.url.as_deref()
     }
 }
 

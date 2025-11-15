@@ -30,9 +30,10 @@ pub struct Dependency {
     pub name: String,
     pub version: Option<String>,
     pub dep_type: DependencyType,
+    pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DependencyType {
     Runtime,
     Build,
@@ -63,6 +64,12 @@ pub trait PackageFormat {
 
     /// Get the list of dependencies
     fn dependencies(&self) -> &[Dependency];
+
+    /// Extract all file contents from the package
+    ///
+    /// Returns a vector of ExtractedFile containing file metadata and content.
+    /// This is used during package installation to get the actual file data.
+    fn extract_file_contents(&self) -> Result<Vec<ExtractedFile>>;
 
     /// Convert this package to a Trove representation
     fn to_trove(&self) -> Trove;

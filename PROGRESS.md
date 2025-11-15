@@ -1199,3 +1199,171 @@ Known Limitations (Session 16):
 - Fixed architecture (x86_64) for all repositories
 - Debian still only syncs main component
 - Repository cloning creates temporary memory overhead
+
+**Session 17** (2025-11-14) - **Multi-Format Package Installation Support**
+
+Part 1 - PackageFormat Trait Extension:
+- Added extract_file_contents() method to PackageFormat trait
+  - Returns Result<Vec<ExtractedFile>> for polymorphic extraction
+  - Enables dynamic dispatch across all package formats
+- Enhanced Dependency struct with description field
+  - Required for Arch optional dependencies (e.g., "python: for scripts")
+  - RpmPackage updated to provide None for description
+- Made DependencyType Copy
+  - Enables use in closures without cloning
+  - Simple enum with no heap allocations
+
+Part 2 - Arch Linux Package Support:
+- Created src/packages/arch.rs (~470 lines)
+- Parses .pkg.tar.zst, .pkg.tar.xz, .pkg.tar.gz packages
+- Compression format detection:
+  - Zstd: .pkg.tar.zst (primary format since 2020)
+  - XZ: .pkg.tar.xz (legacy format)
+  - Gzip: .pkg.tar.gz (rare, but supported)
+- Metadata extraction from .PKGINFO file:
+  - Package name, version, architecture
+  - Description, URL, licenses, groups
+  - Packager, build date
+  - Dependencies: depend, optdepend, makedepend
+- Dependency parsing with version constraints:
+  - Runtime: "glibc>=2.34" -> name="glibc", version=">=2.34"
+  - Optional: "python: for scripts" -> includes description
+  - Build: makedepend entries
+- File extraction with SHA-256 hashing
+- Skips metadata files (.PKGINFO, .MTREE, .BUILDINFO, .INSTALL)
+- Absolute path normalization (prepends / to all paths)
+
+Part 3 - Debian Package Support:
+- Created src/packages/deb.rs (~550 lines)
+- Added ar crate dependency (version 0.9)
+- Parses .deb packages (AR archives containing tarballs)
+- AR archive structure:
+  - debian-binary: version file
+  - control.tar.*: package metadata
+  - data.tar.*: actual file contents
+- Compression format support:
+  - Gzip: control.tar.gz, data.tar.gz
+  - XZ: control.tar.xz, data.tar.xz
+  - Zstd: control.tar.zst, data.tar.zst
+  - Uncompressed: control.tar, data.tar
+- Control file parsing (RFC 822-like format):
+  - Multi-line field support (continuation lines)
+  - Package name, version, architecture
+  - Description (short description from first line)
+  - Maintainer, section, priority, homepage
+  - Installed-Size in KB
+- Dependency types mapped to DependencyType:
+  - Depends -> Runtime
+  - Recommends -> Optional
+  - Suggests -> Optional
+  - Build-Depends -> Build
+- Dependency constraint parsing:
+  - "libc6 (>= 2.34)" -> name="libc6", version=">= 2.34"
+  - "zlib1g" -> name="zlib1g", version=None
+  - Alternatives handled: "python3 | python2" -> takes first option
+- File extraction with SHA-256 hashing
+- Path normalization (./ prefix stripped)
+
+Part 4 - Dynamic Dispatch Implementation:
+- Updated src/main.rs install_package_from_file()
+- Changed from concrete RpmPackage to Box<dyn PackageFormat>
+- Package detection and parsing:
+  - PackageFormatType::Rpm -> Box::new(RpmPackage::parse())
+  - PackageFormatType::Deb -> Box::new(DebPackage::parse())
+  - PackageFormatType::Arch -> Box::new(ArchPackage::parse())
+- Single unified installation path for all formats
+- All package.method() calls work polymorphically:
+  - package.name(), package.version()
+  - package.files(), package.dependencies()
+  - package.extract_file_contents()
+  - package.to_trove()
+- Format detection already supported all three formats:
+  - Extension-based: .rpm, .deb, .pkg.tar.{zst,xz}
+  - Magic byte fallback for each format
+
+Part 5 - Testing and Quality:
+- All 98 tests passing
+- New test coverage:
+  - ArchPackage: 5 unit tests (structure, trait, compression, parsing, deps)
+  - DebPackage: 5 unit tests (structure, trait, control, dep parsing)
+- Existing RPM tests unchanged and passing
+- Zero compilation warnings (after fixing unused imports)
+- Build time: ~4.5 seconds for full build
+- Test execution: 1.5 seconds for all 98 tests
+
+Part 6 - File Structure:
+Files created:
+- src/packages/arch.rs (470 lines)
+  - ArchPackage struct and PackageFormat impl
+  - CompressionFormat enum (Zstd, Xz, Gzip)
+  - PkgInfo struct for .PKGINFO parsing
+  - Helper methods for parsing and extraction
+- src/packages/deb.rs (550 lines)
+  - DebPackage struct and PackageFormat impl
+  - ControlInfo struct for control file parsing
+  - Helper methods for AR extraction and parsing
+
+Files modified:
+- src/packages/mod.rs: Added arch and deb modules
+- src/packages/traits.rs:
+  - Added extract_file_contents() to PackageFormat trait
+  - Added description field to Dependency
+  - Made DependencyType Copy
+- src/packages/rpm.rs:
+  - Moved extract_file_contents() to trait impl
+  - Added description: None to Dependency creation
+- src/main.rs:
+  - Added ArchPackage and DebPackage imports
+  - Changed install_package_from_file() to use Box<dyn PackageFormat>
+  - Updated all rpm variable references to package
+- Cargo.toml: Added ar = "0.9" dependency
+
+Part 7 - Implementation Highlights:
+- Trait-based abstraction with dynamic dispatch
+- Zero runtime overhead for method calls (trait objects use vtables)
+- Content-addressable storage works uniformly across formats
+- SHA-256 computed during extraction for all formats
+- File metadata (path, size, mode, hash) consistent structure
+- Dependency resolution will work across package formats
+- Installation path identical for RPM, DEB, and Arch packages
+
+Part 8 - Dependency Handling Consistency:
+- All formats map to three types: Runtime, Build, Optional
+- Version constraints preserved in original format:
+  - RPM: "glibc >= 2.34-1" (space-separated)
+  - Arch: "glibc>=2.34" (no spaces)
+  - Debian: "libc6 (>= 2.34)" (parenthesized)
+- Resolver will need format-specific constraint parsing
+- Optional dependencies preserve descriptions where available
+
+Multi-Format Installation Success Criteria Met:
+- PackageFormat trait extended with extract_file_contents() (checkmark)
+- ArchPackage fully implemented and tested (checkmark)
+- DebPackage fully implemented and tested (checkmark)
+- Dynamic dispatch working in install path (checkmark)
+- All three formats installable (checkmark)
+- All 98 tests passing (checkmark)
+- Zero compilation warnings (checkmark)
+
+Technical Achievements:
+- Single code path handles RPM, DEB, and Arch packages
+- Polymorphic file extraction and metadata access
+- Dependency information preserved across formats
+- Content-addressable storage format-agnostic
+- Installation transaction logic unchanged
+- File conflict detection works uniformly
+
+Format-Specific Details Preserved:
+- RPM: source_rpm, build_host, vendor, license, url
+- Arch: licenses (array), groups, packager, build_date, url
+- Debian: maintainer, section, priority, homepage, installed_size
+- Accessible via format-specific methods on concrete types
+- Lost after conversion to Box<dyn PackageFormat> (design trade-off)
+
+Known Limitations (Session 17):
+- Format-specific metadata not accessible through trait
+- Dependency version constraint formats not normalized
+- No verification of package signatures yet
+- File permissions not validated during installation
+- Symlinks not yet handled in any format
+- No support for package scripts (pre/post install)

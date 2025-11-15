@@ -5,6 +5,8 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use conary::db::models::{DeltaStats, PackageDelta};
 use conary::delta::DeltaApplier;
+use conary::packages::arch::ArchPackage;
+use conary::packages::deb::DebPackage;
 use conary::packages::rpm::RpmPackage;
 use conary::packages::traits::DependencyType;
 use conary::packages::PackageFormat;
@@ -285,27 +287,23 @@ fn install_package_from_file(
     info!("Detected package format: {:?}", format);
 
     // Parse the package based on format
-    let rpm = match format {
-        PackageFormatType::Rpm => RpmPackage::parse(package_path.to_str().unwrap())?,
-        PackageFormatType::Deb => {
-            return Err(anyhow::anyhow!("DEB format not yet implemented"));
-        }
-        PackageFormatType::Arch => {
-            return Err(anyhow::anyhow!("Arch format not yet implemented"));
-        }
+    let package: Box<dyn PackageFormat> = match format {
+        PackageFormatType::Rpm => Box::new(RpmPackage::parse(package_path.to_str().unwrap())?),
+        PackageFormatType::Deb => Box::new(DebPackage::parse(package_path.to_str().unwrap())?),
+        PackageFormatType::Arch => Box::new(ArchPackage::parse(package_path.to_str().unwrap())?),
     };
 
     info!(
         "Parsed package: {} version {} ({} files, {} dependencies)",
-        rpm.name(),
-        rpm.version(),
-        rpm.files().len(),
-        rpm.dependencies().len()
+        package.name(),
+        package.version(),
+        package.files().len(),
+        package.dependencies().len()
     );
 
-    // Extract file contents from RPM
+    // Extract file contents from package
     info!("Extracting file contents from package...");
-    let extracted_files = rpm.extract_file_contents()?;
+    let extracted_files = package.extract_file_contents()?;
     info!("Extracted {} files", extracted_files.len());
 
     // Initialize CAS and file deployer
@@ -320,12 +318,12 @@ fn install_package_from_file(
         let changeset_desc = if let Some(old) = old_trove {
             format!(
                 "Upgrade {} from {} to {}",
-                rpm.name(),
+                package.name(),
                 old.version,
-                rpm.version()
+                package.version()
             )
         } else {
-            format!("Install {}-{}", rpm.name(), rpm.version())
+            format!("Install {}-{}", package.name(), package.version())
         };
         let mut changeset = conary::db::models::Changeset::new(changeset_desc);
         let changeset_id = changeset.insert(tx)?;
@@ -339,7 +337,7 @@ fn install_package_from_file(
         }
 
         // Convert to Trove and associate with changeset
-        let mut trove = rpm.to_trove();
+        let mut trove = package.to_trove();
         trove.installed_by_changeset_id = Some(changeset_id);
         let trove_id = trove.insert(tx)?;
 
@@ -350,7 +348,7 @@ fn install_package_from_file(
                 if let Some(existing) = conary::db::models::FileEntry::find_by_path(tx, &file.path)? {
                     let owner_trove = conary::db::models::Trove::find_by_id(tx, existing.trove_id)?;
                     if let Some(owner) = owner_trove {
-                        if owner.name != rpm.name() {
+                        if owner.name != package.name() {
                             return Err(conary::Error::InitError(format!(
                                 "File conflict: {} is owned by package {}",
                                 file.path, owner.name
@@ -394,7 +392,7 @@ fn install_package_from_file(
         }
 
         // Store dependencies in database
-        for dep in rpm.dependencies() {
+        for dep in package.dependencies() {
             let dep_type_str = match dep.dep_type {
                 DependencyType::Runtime => "runtime",
                 DependencyType::Build => "build",
