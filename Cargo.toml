@@ -59,6 +59,13 @@ rayon = "1.8"
 # This is acceptable for a package manager use case
 sequoia-openpgp = { version = "1.17", default-features = false, features = ["crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 
+# Repository metadata parsing
+tar = "0.4"                     # Tarball extraction for Arch repos
+flate2 = "1.0"                  # Gzip compression (for Arch, Debian, Fedora)
+xz2 = "0.1"                     # XZ compression (for Arch)
+rfc822-like = "0.2"             # RFC 822 parser for Debian/Ubuntu Packages files
+quick-xml = "0.31"              # XML parser for Fedora/RPM repodata
+
 [dev-dependencies]
 
 [build-dependencies]

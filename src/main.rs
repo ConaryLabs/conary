@@ -444,6 +444,49 @@ fn main() -> Result<()> {
             info!("Initializing Conary database at: {}", db_path);
             conary::db::init(&db_path)?;
             println!("Database initialized successfully at: {}", db_path);
+
+            // Add default repositories for major distributions
+            let conn = conary::db::open(&db_path)?;
+
+            info!("Adding default repositories...");
+
+            // Arch Linux core repository (priority 100)
+            match conary::repository::add_repository(
+                &conn,
+                "arch-core".to_string(),
+                "https://geo.mirror.pkgbuild.com/core/os/x86_64".to_string(),
+                true,
+                100,
+            ) {
+                Ok(_) => println!("  Added: arch-core (Arch Linux)"),
+                Err(e) => eprintln!("  Warning: Could not add arch-core: {}", e),
+            }
+
+            // Fedora 43 Everything repository (priority 90)
+            match conary::repository::add_repository(
+                &conn,
+                "fedora-43".to_string(),
+                "https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os".to_string(),
+                true,
+                90,
+            ) {
+                Ok(_) => println!("  Added: fedora-43 (Fedora 43)"),
+                Err(e) => eprintln!("  Warning: Could not add fedora-43: {}", e),
+            }
+
+            // Ubuntu 24.04 LTS main repository (priority 80)
+            match conary::repository::add_repository(
+                &conn,
+                "ubuntu-noble".to_string(),
+                "http://archive.ubuntu.com/ubuntu".to_string(),
+                true,
+                80,
+            ) {
+                Ok(_) => println!("  Added: ubuntu-noble (Ubuntu 24.04 LTS)"),
+                Err(e) => eprintln!("  Warning: Could not add ubuntu-noble: {}", e),
+            }
+
+            println!("\nDefault repositories added. Use 'conary repo-sync' to download metadata.");
             Ok(())
         }
         Some(Commands::Install {

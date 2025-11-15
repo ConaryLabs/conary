@@ -8,11 +8,14 @@
 //! - Downloading packages with retry and resume support
 //! - Verifying package checksums
 //! - GPG signature verification
+//! - Native metadata format parsing (Arch, Debian, Fedora)
 
 pub mod gpg;
+pub mod parsers;
 pub mod selector;
 
 pub use gpg::GpgVerifier;
+pub use parsers::{ChecksumType, Dependency, DependencyType, RepositoryParser};
 pub use selector::{PackageSelector, PackageWithRepo, SelectionOptions};
 
 use crate::db::models::{PackageDelta, Repository, RepositoryPackage};
@@ -203,10 +206,163 @@ impl Default for RepositoryClient {
     }
 }
 
+/// Detected repository format
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RepositoryFormat {
+    Arch,
+    Debian,
+    Fedora,
+    Json,
+}
+
+/// Detect repository format based on repository name and URL
+fn detect_repository_format(name: &str, url: &str) -> RepositoryFormat {
+    let name_lower = name.to_lowercase();
+    let url_lower = url.to_lowercase();
+
+    // Check for Arch Linux indicators
+    if name_lower.contains("arch")
+        || url_lower.contains("archlinux")
+        || url_lower.contains("pkgbuild")
+        || url_lower.contains(".db.tar") {
+        return RepositoryFormat::Arch;
+    }
+
+    // Check for Fedora indicators
+    if name_lower.contains("fedora")
+        || url_lower.contains("fedora")
+        || url_lower.contains("/repodata/") {
+        return RepositoryFormat::Fedora;
+    }
+
+    // Check for Debian/Ubuntu indicators
+    if name_lower.contains("debian")
+        || name_lower.contains("ubuntu")
+        || url_lower.contains("debian")
+        || url_lower.contains("ubuntu")
+        || url_lower.contains("/dists/") {
+        return RepositoryFormat::Debian;
+    }
+
+    // Default to JSON format
+    RepositoryFormat::Json
+}
+
+/// Synchronize repository using native metadata format parsers
+fn sync_repository_native(
+    conn: &Connection,
+    repo: &mut Repository,
+    format: RepositoryFormat,
+) -> Result<usize> {
+    info!("Syncing repository {} using native {:?} format", repo.name, format);
+
+    // Parse metadata using appropriate parser
+    let packages = match format {
+        RepositoryFormat::Arch => {
+            // Extract repository name from repo.name (e.g., "arch-core" -> "core")
+            let repo_name = if let Some(suffix) = repo.name.strip_prefix("arch-") {
+                suffix.to_string()
+            } else {
+                "core".to_string()
+            };
+
+            let parser = parsers::arch::ArchParser::new(repo_name);
+            parser.sync_metadata(&repo.url)?
+        }
+        RepositoryFormat::Debian => {
+            // For Ubuntu/Debian, we need distribution, component, and architecture
+            // Extract from repository name: "ubuntu-noble" -> noble
+            let distribution = if let Some(suffix) = repo.name.strip_prefix("ubuntu-") {
+                suffix.to_string()
+            } else if let Some(suffix) = repo.name.strip_prefix("debian-") {
+                suffix.to_string()
+            } else {
+                "noble".to_string()
+            };
+
+            let parser = parsers::debian::DebianParser::new(
+                distribution,
+                "main".to_string(),
+                "amd64".to_string(),
+            );
+            parser.sync_metadata(&repo.url)?
+        }
+        RepositoryFormat::Fedora => {
+            let parser = parsers::fedora::FedoraParser::new("x86_64".to_string());
+            parser.sync_metadata(&repo.url)?
+        }
+        RepositoryFormat::Json => {
+            return Err(Error::ParseError("JSON format should use sync_repository".to_string()));
+        }
+    };
+
+    // Delete old package entries for this repository
+    RepositoryPackage::delete_by_repository(conn, repo.id.unwrap())?;
+
+    // Convert and insert package metadata
+    let mut count = 0;
+    for pkg_meta in packages {
+        // Convert parsers::Dependency to Vec<String>
+        let deps_json = if !pkg_meta.dependencies.is_empty() {
+            let dep_strings: Vec<String> = pkg_meta
+                .dependencies
+                .iter()
+                .map(|dep| {
+                    if let Some(constraint) = &dep.constraint {
+                        format!("{} {}", dep.name, constraint)
+                    } else {
+                        dep.name.clone()
+                    }
+                })
+                .collect();
+            Some(serde_json::to_string(&dep_strings).unwrap_or_default())
+        } else {
+            None
+        };
+
+        let mut repo_pkg = RepositoryPackage::new(
+            repo.id.unwrap(),
+            pkg_meta.name,
+            pkg_meta.version,
+            pkg_meta.checksum,
+            pkg_meta.size as i64,
+            pkg_meta.download_url,
+        );
+
+        repo_pkg.architecture = pkg_meta.architecture;
+        repo_pkg.description = pkg_meta.description;
+        repo_pkg.dependencies = deps_json;
+
+        repo_pkg.insert(conn)?;
+        count += 1;
+    }
+
+    // Update last_sync timestamp
+    repo.last_sync = Some(current_timestamp());
+    repo.update(conn)?;
+
+    info!("Synchronized {} packages from repository {}", count, repo.name);
+    Ok(count)
+}
+
 /// Synchronize repository metadata with the database
 pub fn sync_repository(conn: &Connection, repo: &mut Repository) -> Result<usize> {
     info!("Synchronizing repository: {}", repo.name);
 
+    // Detect repository format
+    let format = detect_repository_format(&repo.name, &repo.url);
+
+    // Try native format first if detected
+    if format != RepositoryFormat::Json {
+        match sync_repository_native(conn, repo, format) {
+            Ok(count) => return Ok(count),
+            Err(e) => {
+                warn!("Native format sync failed: {}, falling back to JSON", e);
+            }
+        }
+    }
+
+    // Fall back to JSON metadata format
     let client = RepositoryClient::new()?;
     let metadata = client.fetch_metadata(&repo.url)?;
 
