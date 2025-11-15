@@ -10,7 +10,7 @@ use rusqlite::Connection;
 use tracing::{debug, info};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 3;
+pub const SCHEMA_VERSION: i32 = 4;
 
 /// Initialize the schema version tracking table
 fn init_schema_version(conn: &Connection) -> Result<()> {
@@ -78,6 +78,7 @@ fn apply_migration(conn: &Connection, version: i32) -> Result<()> {
         1 => migrate_v1(conn),
         2 => migrate_v2(conn),
         3 => migrate_v3(conn),
+        4 => migrate_v4(conn),
         _ => panic!("Unknown migration version: {}", version),
     }
 }
@@ -250,6 +251,62 @@ fn migrate_v3(conn: &Connection) -> Result<()> {
     )?;
 
     info!("Schema version 3 applied successfully");
+    Ok(())
+}
+
+/// Schema Version 4: Add repository management support
+///
+/// Adds tables for remote repository management:
+/// - repositories: Repository configuration and metadata
+/// - repository_packages: Package metadata index from repositories
+fn migrate_v4(conn: &Connection) -> Result<()> {
+    debug!("Migrating to schema version 4");
+
+    conn.execute_batch(
+        "
+        -- Repositories: Remote package sources
+        CREATE TABLE repositories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            url TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            priority INTEGER NOT NULL DEFAULT 0,
+            gpg_check INTEGER NOT NULL DEFAULT 1,
+            gpg_key_url TEXT,
+            metadata_expire INTEGER NOT NULL DEFAULT 3600,
+            last_sync TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX idx_repositories_name ON repositories(name);
+        CREATE INDEX idx_repositories_enabled ON repositories(enabled);
+        CREATE INDEX idx_repositories_priority ON repositories(priority);
+
+        -- Repository packages: Available packages from repositories
+        CREATE TABLE repository_packages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repository_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            architecture TEXT,
+            description TEXT,
+            checksum TEXT NOT NULL,
+            size INTEGER NOT NULL,
+            download_url TEXT NOT NULL,
+            dependencies TEXT,
+            metadata TEXT,
+            synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX idx_repo_packages_name ON repository_packages(name);
+        CREATE INDEX idx_repo_packages_repo ON repository_packages(repository_id);
+        CREATE INDEX idx_repo_packages_checksum ON repository_packages(checksum);
+        CREATE UNIQUE INDEX idx_repo_packages_unique ON repository_packages(repository_id, name, version, architecture);
+        ",
+    )?;
+
+    info!("Schema version 4 applied successfully");
     Ok(())
 }
 

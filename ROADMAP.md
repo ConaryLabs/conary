@@ -1,10 +1,10 @@
 # Conary Package Manager - Phased Roadmap
 
 ## Current State
-**Phase 6 Complete** - Foundation is solid with 47 tests passing. Core package management functionality is working: install, remove, rollback, verify, and query operations all functional with full filesystem deployment and atomic transactions.
+**Phase 9A Complete** - Repository management foundation is solid with 67 tests passing. Core package management functionality is working: install, remove, rollback, verify, query, dependency resolution, and repository management all functional with full filesystem deployment, atomic transactions, and remote package discovery.
 
-**Completed:** Phases 0-6 (Database, schema, core models, RPM support, changeset transactions, file operations with CAS)
-**Next:** Phase 7 (Dependency Resolution) and beyond
+**Completed:** Phases 0-8, Phase 9A (Database, schema, core models, RPM support, changeset transactions, file operations with CAS, dependency resolution, CLI polish, repository management)
+**Next:** Phase 9B (Delta Updates) and beyond
 
 See PROGRESS.md for detailed session-by-session implementation notes.
 
@@ -160,7 +160,26 @@ See PROGRESS.md for detailed session-by-session implementation notes.
 
 ---
 
-## Phase 9: Delta Updates
+## Phase 9A: Repository Management - ✓ COMPLETE
+**Goal**: Implement remote package repository support
+
+**Deliverables:**
+- ✓ Database schema v4 with repositories and repository_packages tables
+- ✓ Repository and RepositoryPackage models with full CRUD operations
+- ✓ HTTP client with retry and timeout support (reqwest)
+- ✓ JSON-based repository metadata format
+- ✓ Repository metadata synchronization with expiry checking
+- ✓ Package checksum verification (SHA-256)
+- ✓ CLI commands: repo-add, repo-list, repo-remove, repo-enable, repo-disable, repo-sync
+- ✓ Search command for repository package discovery
+- ✓ Basic update command stub (full implementation in future)
+- ✓ 67 tests passing with comprehensive repository test coverage
+
+**Success Criteria**: Can add repositories, sync metadata, search packages ✓ COMPLETE
+
+---
+
+## Phase 9B: Delta Updates
 **Goal**: Implement efficient binary delta updates
 
 **Decision Point**: Choose delta algorithm (recommend **zstd** for simplicity + compression)

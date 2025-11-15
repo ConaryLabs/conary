@@ -9,9 +9,13 @@ pub enum Error {
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
 
-    /// I/O errors
+    /// I/O errors (automatic conversion)
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// I/O errors (manual)
+    #[error("{0}")]
+    IoError(String),
 
     /// Database initialization error
     #[error("Failed to initialize database: {0}")]
@@ -20,6 +24,26 @@ pub enum Error {
     /// Database not found
     #[error("Database not found at path: {0}")]
     DatabaseNotFound(String),
+
+    /// Download error
+    #[error("Download failed: {0}")]
+    DownloadError(String),
+
+    /// Resource conflict (e.g., duplicate name)
+    #[error("Conflict: {0}")]
+    ConflictError(String),
+
+    /// Resource not found
+    #[error("Not found: {0}")]
+    NotFoundError(String),
+
+    /// Checksum mismatch
+    #[error("Checksum mismatch: expected {expected}, got {actual}")]
+    ChecksumMismatch { expected: String, actual: String },
+
+    /// Parse error
+    #[error("Parse error: {0}")]
+    ParseError(String),
 }
 
 /// Result type alias using Conary's Error type

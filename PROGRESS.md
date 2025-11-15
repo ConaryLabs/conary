@@ -1,6 +1,6 @@
 # PROGRESS.md
 
-## Project Status: Phase 8 Complete - CLI Polish & Documentation
+## Project Status: Phase 9A Complete - Repository Management
 
 ### Current State
 - [COMPLETE] **Phase 0**: Vision and architecture documented
@@ -12,7 +12,8 @@
 - [COMPLETE] **Phase 6**: File-Level Operations with content-addressable storage
 - [COMPLETE] **Phase 7**: Dependency Resolution with graph-based solver
 - [COMPLETE] **Phase 8**: CLI Interface with shell completions and man pages
-- [PENDING] **Phase 9**: Repository Management (next)
+- [COMPLETE] **Phase 9A**: Repository Management with HTTP downloads and metadata sync
+- [PENDING] **Phase 9B**: Delta Updates (next)
 
 ### Phase 1 Deliverables [COMPLETE]
 - Cargo.toml with core dependencies (rusqlite, thiserror, anyhow, clap, sha2, tracing)
@@ -553,3 +554,95 @@ Phase 8 Success Criteria Met:
 - Professional CLI documentation ✓
 - All tests passing and clippy-clean ✓
 - README and ROADMAP updated ✓
+
+**Session 11** (2025-11-14) - **Phase 9A Complete: Repository Management**
+
+Part 1 - Database Schema v4:
+- Updated SCHEMA_VERSION to 4
+- Added two new tables in migrate_v4():
+  - `repositories`: name, URL, enabled, priority, gpg_check, gpg_key_url, metadata_expire, last_sync
+  - `repository_packages`: package metadata index with foreign key to repositories
+  - Four indexes for efficient package lookups (name, repository, checksum, unique constraint)
+- All repository configuration stored in database (no config files per CLAUDE.md)
+- Foreign key CASCADE delete ensures cleanup when repository removed
+
+Part 2 - Repository Models:
+- Added Repository model to src/db/models.rs (154 lines):
+  - new(), insert(), find_by_id(), find_by_name()
+  - list_all(), list_enabled() with priority ordering
+  - update() and delete() methods
+  - Boolean fields (enabled, gpg_check) stored as INTEGER
+- Added RepositoryPackage model to src/db/models.rs (131 lines):
+  - new(), insert(), find_by_name(), find_by_repository()
+  - search() with LIKE pattern matching on name and description
+  - delete_by_repository() for bulk cleanup during sync
+  - Dependencies and metadata stored as JSON strings
+
+Part 3 - Repository Module Infrastructure:
+- Created src/repository/mod.rs with core functionality (470+ lines):
+  - RepositoryClient wrapper with retry support (MAX_RETRIES=3)
+  - HTTP client with 30s timeout using reqwest blocking API
+  - fetch_metadata() with retry and exponential backoff
+  - download_file() with atomic rename (tmp file → final)
+  - RepositoryMetadata and PackageMetadata JSON structures
+  - sync_repository() - fetches metadata, clears old packages, inserts new
+  - needs_sync() - checks metadata_expire against last_sync timestamp
+  - download_package() - downloads and verifies checksum (SHA-256)
+  - Repository management functions: add, remove, enable/disable, search
+  - 6 unit tests for repository operations
+
+Part 4 - HTTP and JSON Dependencies:
+- Added reqwest v0.11 with features: blocking, rustls-tls, json
+- Added serde v1.0 with derive feature
+- Added serde_json v1.0
+- Added chrono v0.4 for timestamp handling (RFC3339 format)
+- Updated error types with new variants:
+  - DownloadError, ConflictError, NotFoundError
+  - ChecksumMismatch (struct variant with expected/actual)
+  - ParseError, IoError (manual string wrapper)
+
+Part 5 - CLI Commands (8 new commands):
+- Repository management commands:
+  - `repo-add <name> <url>` - add repository with priority and enabled flags
+  - `repo-list` - list enabled or all repositories with sync status
+  - `repo-remove <name>` - remove repository and all its packages
+  - `repo-enable/disable <name>` - toggle repository enabled state
+  - `repo-sync [name]` - sync one or all enabled repositories with force flag
+- Package discovery commands:
+  - `search <pattern>` - search repository packages by name/description
+  - `update [package]` - basic stub implementation (full version in Phase 9B)
+- All commands integrated in main.rs with proper error handling
+- Build.rs updated with all new commands for man page generation
+
+Part 6 - Testing and Code Quality:
+- Fixed clippy warnings:
+  - Changed .last() to .next_back() for DoubleEndedIterator
+  - Removed unnecessary borrows in test array literals (4 locations)
+- Test results:
+  - 67 tests passing (50 lib + 7 bin + 10 integration, 1 ignored)
+  - Gained 6 new tests from repository module
+  - All tests passing, zero clippy warnings with -D warnings
+
+Part 7 - Documentation Updates:
+- Updated README.md:
+  - Added 8 new CLI commands to command list
+  - Added "Repository Management" section with usage examples
+  - Updated test count to 67 tests
+  - Added repository features to implemented features list
+  - Changed "What's Next" to Phase 9B (delta updates)
+- Updated PROGRESS.md (this file) with Session 11 log
+- Updated ROADMAP.md to mark Phase 9A complete
+
+Phase 9A Success Criteria Met:
+- Database schema v4 with repositories tables ✓
+- Repository and RepositoryPackage models ✓
+- HTTP download infrastructure with retry ✓
+- Repository metadata sync with JSON parsing ✓
+- Repository management CLI commands ✓
+- Package search functionality ✓
+- Checksum verification for downloads ✓
+- Metadata expiry and caching ✓
+- Comprehensive tests (67 total, 6 new) ✓
+- Zero clippy warnings ✓
+
+Note: Full `update` command with dependency resolution deferred to future work. Phase 9A provides the foundation for repository-based package discovery and management.

@@ -61,6 +61,14 @@ The goal isn't to replace distros - it's to decouple package management from dis
 - `conary depends <package>` - Show package dependencies
 - `conary rdepends <package>` - Show reverse dependencies (what depends on this)
 - `conary whatbreaks <package>` - Show what would break if package removed
+- `conary repo-add <name> <url>` - Add a new package repository
+- `conary repo-list` - List configured repositories
+- `conary repo-remove <name>` - Remove a repository
+- `conary repo-enable <name>` - Enable a repository
+- `conary repo-disable <name>` - Disable a repository
+- `conary repo-sync [name]` - Synchronize repository metadata
+- `conary search <pattern>` - Search for packages in repositories
+- `conary update [package]` - Update packages (basic implementation)
 - `conary completions <shell>` - Generate shell completion scripts
 
 **Core Features Implemented:**
@@ -108,11 +116,38 @@ sudo mandb
 man conary
 ```
 
+**Repository Management:**
+
+Conary supports remote package repositories for discovering and installing packages:
+
+```bash
+# Add a repository
+conary repo-add myrepo https://example.com/packages
+
+# List repositories
+conary repo-list
+
+# Synchronize package metadata
+conary repo-sync
+
+# Search for packages
+conary search nginx
+
+# Install from repository (coming soon)
+# conary install nginx
+```
+
 **Testing:**
-- 61 tests passing (44 lib + 7 bin + 10 integration)
-- Comprehensive test coverage for CAS, transactions, dependency resolution, and core operations
+- 67 tests passing (50 lib + 7 bin + 10 integration)
+- Comprehensive test coverage for CAS, transactions, dependency resolution, repository management, and core operations
 - Integration tests for full install/remove/rollback workflows
+
+**Core Features Implemented (continued):**
+- **Repository Management**: Add remote repositories, sync metadata, search packages
+- **HTTP Downloads**: Automatic retry with exponential backoff for reliable downloads
+- **JSON Metadata**: Simple JSON-based repository index format
+- **Metadata Caching**: Configurable expiry time to minimize bandwidth usage
 
 ### What's Next
 
-Phase 9 and beyond: repository management, additional package formats (DEB, Arch), delta updates, package signing. See ROADMAP.md for details.
+Phase 9B and beyond: delta updates, additional package formats (DEB, Arch), full update command with dependency resolution, package signing. See ROADMAP.md for details.

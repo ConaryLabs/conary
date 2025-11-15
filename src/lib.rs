@@ -17,6 +17,7 @@ pub mod db;
 mod error;
 pub mod filesystem;
 pub mod packages;
+pub mod repository;
 pub mod resolver;
 pub mod version;
 

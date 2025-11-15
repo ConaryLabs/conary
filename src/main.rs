@@ -119,6 +119,85 @@ enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+    /// Add a new repository
+    RepoAdd {
+        /// Repository name
+        name: String,
+        /// Repository URL
+        url: String,
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+        /// Priority (higher = preferred, default: 0)
+        #[arg(short, long, default_value = "0")]
+        priority: i32,
+        /// Disable repository after adding
+        #[arg(long)]
+        disabled: bool,
+    },
+    /// List repositories
+    RepoList {
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+        /// Show all repositories (including disabled)
+        #[arg(short, long)]
+        all: bool,
+    },
+    /// Remove a repository
+    RepoRemove {
+        /// Repository name
+        name: String,
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+    },
+    /// Enable a repository
+    RepoEnable {
+        /// Repository name
+        name: String,
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+    },
+    /// Disable a repository
+    RepoDisable {
+        /// Repository name
+        name: String,
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+    },
+    /// Synchronize repository metadata
+    RepoSync {
+        /// Repository name (syncs all if omitted)
+        name: Option<String>,
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+        /// Force sync even if metadata hasn't expired
+        #[arg(short, long)]
+        force: bool,
+    },
+    /// Search for packages in repositories
+    Search {
+        /// Search pattern
+        pattern: String,
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+    },
+    /// Update installed packages from repositories
+    Update {
+        /// Package name (updates all if omitted)
+        package: Option<String>,
+        /// Database path (default: /var/lib/conary/conary.db)
+        #[arg(short, long, default_value = "/var/lib/conary/conary.db")]
+        db_path: String,
+        /// Install root directory (default: /)
+        #[arg(short, long, default_value = "/")]
+        root: String,
+    },
 }
 
 /// Detect package format from file extension and magic bytes
@@ -838,6 +917,168 @@ fn main() -> Result<()> {
 
             Ok(())
         }
+        Some(Commands::RepoAdd {
+            name,
+            url,
+            db_path,
+            priority,
+            disabled,
+        }) => {
+            info!("Adding repository: {} ({})", name, url);
+
+            let conn = conary::db::open(&db_path)?;
+            let repo = conary::repository::add_repository(&conn, name.clone(), url.clone(), !disabled, priority)?;
+
+            println!("Added repository: {}", repo.name);
+            println!("  URL: {}", repo.url);
+            println!("  Enabled: {}", repo.enabled);
+            println!("  Priority: {}", repo.priority);
+
+            Ok(())
+        }
+        Some(Commands::RepoList { db_path, all }) => {
+            info!("Listing repositories");
+
+            let conn = conary::db::open(&db_path)?;
+            let repos = if all {
+                conary::db::models::Repository::list_all(&conn)?
+            } else {
+                conary::db::models::Repository::list_enabled(&conn)?
+            };
+
+            if repos.is_empty() {
+                println!("No repositories configured");
+            } else {
+                println!("Repositories:");
+                for repo in repos {
+                    let enabled_mark = if repo.enabled { "✓" } else { "✗" };
+                    let sync_status = match &repo.last_sync {
+                        Some(ts) => format!("synced {}", ts),
+                        None => "never synced".to_string(),
+                    };
+                    println!("  {} {} (priority: {}, {})", enabled_mark, repo.name, repo.priority, sync_status);
+                    println!("      {}", repo.url);
+                }
+            }
+
+            Ok(())
+        }
+        Some(Commands::RepoRemove { name, db_path }) => {
+            info!("Removing repository: {}", name);
+
+            let conn = conary::db::open(&db_path)?;
+            conary::repository::remove_repository(&conn, &name)?;
+
+            println!("Removed repository: {}", name);
+
+            Ok(())
+        }
+        Some(Commands::RepoEnable { name, db_path }) => {
+            info!("Enabling repository: {}", name);
+
+            let conn = conary::db::open(&db_path)?;
+            conary::repository::set_repository_enabled(&conn, &name, true)?;
+
+            println!("Enabled repository: {}", name);
+
+            Ok(())
+        }
+        Some(Commands::RepoDisable { name, db_path }) => {
+            info!("Disabling repository: {}", name);
+
+            let conn = conary::db::open(&db_path)?;
+            conary::repository::set_repository_enabled(&conn, &name, false)?;
+
+            println!("Disabled repository: {}", name);
+
+            Ok(())
+        }
+        Some(Commands::RepoSync {
+            name,
+            db_path,
+            force,
+        }) => {
+            info!("Synchronizing repository metadata");
+
+            let conn = conary::db::open(&db_path)?;
+
+            let repos_to_sync = if let Some(repo_name) = name {
+                // Sync specific repository
+                let repo = conary::db::models::Repository::find_by_name(&conn, &repo_name)?
+                    .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", repo_name))?;
+                vec![repo]
+            } else {
+                // Sync all enabled repositories
+                conary::db::models::Repository::list_enabled(&conn)?
+            };
+
+            if repos_to_sync.is_empty() {
+                println!("No repositories to sync");
+                return Ok(());
+            }
+
+            for mut repo in repos_to_sync {
+                if !force && !conary::repository::needs_sync(&repo) {
+                    println!("Repository '{}' is up to date, skipping", repo.name);
+                    continue;
+                }
+
+                println!("Syncing repository: {} ...", repo.name);
+                match conary::repository::sync_repository(&conn, &mut repo) {
+                    Ok(count) => {
+                        println!("  ✓ Synchronized {} packages", count);
+                    }
+                    Err(e) => {
+                        println!("  ✗ Failed to sync: {}", e);
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        Some(Commands::Search { pattern, db_path }) => {
+            info!("Searching for packages matching: {}", pattern);
+
+            let conn = conary::db::open(&db_path)?;
+            let packages = conary::repository::search_packages(&conn, &pattern)?;
+
+            if packages.is_empty() {
+                println!("No packages found matching '{}'", pattern);
+            } else {
+                println!("Found {} packages matching '{}':", packages.len(), pattern);
+                for pkg in packages {
+                    let arch_str = pkg.architecture.as_deref().unwrap_or("noarch");
+                    println!("  {} {} ({})", pkg.name, pkg.version, arch_str);
+                    if let Some(desc) = &pkg.description {
+                        println!("      {}", desc);
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        Some(Commands::Update {
+            package,
+            db_path,
+            root,
+        }) => {
+            info!("Update command (basic implementation)");
+
+            let _conn = conary::db::open(&db_path)?;
+            let _install_root = std::path::PathBuf::from(&root);
+
+            // Basic implementation: just inform user
+            if let Some(pkg_name) = package {
+                println!("Checking for updates for package: {}", pkg_name);
+            } else {
+                println!("Checking for updates for all installed packages");
+            }
+
+            println!("Note: Full update functionality with dependency resolution is coming soon.");
+            println!("For now, use 'conary search' to find packages and 'conary install' to install them.");
+
+            Ok(())
+        }
         None => {
             // No command provided, show help
             println!("Conary Package Manager v{}", env!("CARGO_PKG_VERSION"));
@@ -858,7 +1099,7 @@ mod tests {
         let path = temp_file.path().to_str().unwrap();
 
         // Write RPM magic bytes
-        std::fs::write(path, &[0xED, 0xAB, 0xEE, 0xDB, 0, 0, 0, 0]).unwrap();
+        std::fs::write(path, [0xED, 0xAB, 0xEE, 0xDB, 0, 0, 0, 0]).unwrap();
 
         let format = detect_package_format(path).unwrap();
         assert_eq!(format, PackageFormatType::Rpm);
@@ -882,7 +1123,7 @@ mod tests {
         let path = temp_file.path().to_str().unwrap();
 
         // Write zstd magic bytes
-        std::fs::write(path, &[0x28, 0xB5, 0x2F, 0xFD, 0, 0, 0, 0]).unwrap();
+        std::fs::write(path, [0x28, 0xB5, 0x2F, 0xFD, 0, 0, 0, 0]).unwrap();
 
         let format = detect_package_format(path).unwrap();
         assert_eq!(format, PackageFormatType::Arch);
@@ -895,7 +1136,7 @@ mod tests {
         let path = temp_file.path().to_str().unwrap();
 
         // Write RPM magic bytes
-        std::fs::write(path, &[0xED, 0xAB, 0xEE, 0xDB, 0, 0, 0, 0]).unwrap();
+        std::fs::write(path, [0xED, 0xAB, 0xEE, 0xDB, 0, 0, 0, 0]).unwrap();
 
         let format = detect_package_format(path).unwrap();
         assert_eq!(format, PackageFormatType::Rpm);
@@ -919,7 +1160,7 @@ mod tests {
         let path = temp_file.path().to_str().unwrap();
 
         // Write random bytes that don't match any format
-        std::fs::write(path, &[0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0]).unwrap();
+        std::fs::write(path, [0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0]).unwrap();
 
         let result = detect_package_format(path);
         assert!(result.is_err());
